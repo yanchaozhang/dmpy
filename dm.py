@@ -113,7 +113,7 @@ class DisplayTools():
         else:
             cmd = self.getCmd(opts)
         print '*************'
-        print 'cmd --> \n:%s' % cmd
+        print 'cmd : --> \n%s' % cmd
         print '*************'
         err = subprocess.call(cmd, shell=True)
         time.sleep(10)
