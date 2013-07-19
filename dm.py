@@ -76,14 +76,18 @@ class DisplayTools():
 
 
     def listMonitorInfo(self):
-        print '%-12s%-15s%-15s%-15s%-15s%-15s' % ('Name', 'preferred', 'online?', \
-                                        'position', 'rotation', 'current')
+        #
+        namelen =  max([len(x.name) for x in self.online])
+        fstr = '%-*s%-12s%-8s%-12s%-10s%-12s'
+        print fstr % (namelen+2,  'Name', 'preferred', 'online?', \
+                      'position', 'rotation', 'current')
         for x in self.connected:
             if x.online:
-                info = '%-15s%-15s%-15s%-15s%-15s%-15s' % \
-                        (x.name, x.presolution, 'YES', x.position, x.rotation, x.cresolution)
+                info = fstr % \
+                        (namelen+2, x.name, x.presolution, 'YES', x.position, \
+                         x.rotation, x.cresolution)
             else:
-                info = '%-15s%-15s%-15s' % (x.name, x.presolution, 'NO')
+                info = '%-*s%-12s%-8s' % (namelen+2, x.name, x.presolution, 'NO')
             print info
 
     def listOnlineMonitors(self):
@@ -91,7 +95,7 @@ class DisplayTools():
             print x.name
 
     def listOfflineMonitors(self):
-        if not len(self.offline):
+        if len(self.offline):
             for x in self.offline:
                 print x.name
         else:
@@ -190,7 +194,6 @@ class DisplayTools():
             r1 = opts.lrotation[1]
 
             direction = self.dirTable[opts.direction]
-            print direction
             if opts.primary == 0:
                 cmd = 'xrandr --output %s --primary --mode %s --rotate %s ' % \
                     ( m0.name, s0, r0)
@@ -291,7 +294,6 @@ def main():
         dm.toggleMonitor(opts.listoffline, off=True)
         return
 
-    print 'begin toggling ....'
     # make sure we have the right number of active monitor
     ntotal = len(dm.connected)
     nonline = len(dm.online)
@@ -316,7 +318,6 @@ def main():
         opts.number = nonline
 
 
-    print 'begin handling size and rotation ....'
     # same resolutions and rotations for 3 or 4 monitors
     # can have different resolutions and rotations for 2 monitors
     if opts.size == 'best':
@@ -352,7 +353,6 @@ def main():
         print 'invalid direction for layout, 0,1,2,3 are valid value'
         sys.exit(-1)
 
-    print 'begin configuration ....'
     dm.setlayout(opts)
 
 if __name__ == '__main__':
