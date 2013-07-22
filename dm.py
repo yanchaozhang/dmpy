@@ -110,6 +110,50 @@ class DisplayTools():
         time.sleep(5)
 
 
+    def getCubeNum(self):
+        cubeRange = [x*x for x in xrange(2, 7)] # 4 ~ 36 monitors total,
+        nconnected = len(self.connected)
+        nonline = len(self.online)              # 2 ~ 6 per row and column
+        onlineRange = [x for x in xrange(4, nonline + 1)]
+        connectedRange = [x for x in xrange(4, nconnected + 1)]
+        possibleOnlineRange = set(onlineRange) & set(cubeRange)
+        possibleConnectedRange = set(connectedRange) & set(cubeRange)
+        if len(possibleConnectedRange) < 1:
+            msg = '%s monitors are not support the cube layout ' % nconnected
+            e = Exception(msg)
+            raise e
+        elif len(possibleConnectedRange) == 1:
+            return list(possibleConnectedRange)[0]
+        elif len(possibleConnectedRange) > 1 and len(possibleOnlineRange) == 1 :
+            return list(possibleOnlineRange)[0]
+        elif len(possibleConnectedRange) > 1 and len(possibleOnlineRange) == 0:
+            return list(possibleConnectedRange)[0]
+        else:
+            return 0
+
+    def setNumOnline(self, number):
+        # make sure we have the right number of active monitor
+        ntotal = len(self.connected)
+        nonline = len(self.online)
+        if number != nonline:  # from command line
+            if number > ntotal:
+                msg = 'you have connected %s monitors totally, but ask for %s ' \
+                        % (ntotal, number)
+                e = Exception(msg)
+                raise e
+            diff = []
+            if nonline < number:
+                diff = self.offline[:number - nonline]
+                map((lambda t: self.toggleMonitor(t.name, off=False)), diff)
+            elif nonline > number:
+                diff = self.online[number - nonline :]
+                map((lambda t: self.toggleMonitor(t.name, off=True)), diff)
+            else:
+                pass
+            # refresh all informations after change
+            self.refresh()
+
+
     def setlayout(self, opts):
         cmd = ''
         if opts.layout in ('cube', '2'):
@@ -131,16 +175,12 @@ class DisplayTools():
         return [l[i:i+n] for i in xrange(0, len(l), n)]
 
     def getCubeCmd(self, opts):
-        cubeRange = [x*x for x in xrange(2, 7)] # 4 ~ 36 monitors total,
-        nconnected = len(self.connected)           # 2 ~ 6 per row and column
-        if nconnected not in cubeRange:
-            msg = '%s monitors are not support the cube layout ' % nconnected
-            e = Exception(msg)
-            raise e
 
-        dlen = int(math.sqrt(nconnected))
-        d2 = self.__chunks(self.connected, dlen)
-        v1 = self.connected[::dlen]
+        dlen = int(math.sqrt(len(self.online)))
+        d2 = self.__chunks(self.online, dlen)
+        v1 = self.online[::dlen]
+        if opts.size == 'best':
+            opts.size = min(x.presolution for x in self.online)
         cmd = ''
         pre = ''
         for i, monitor in enumerate(v1):
@@ -161,6 +201,20 @@ class DisplayTools():
 
     def getCmd(self, opts):
 
+        if not opts.direction:
+            if opts.layout in ('landscape', '0'):
+                opts.direction = '0'
+            elif opts.layout in ('portrait', '1'):
+                opts.direction = '1'
+
+        str4 = [str(i) for i in xrange(4)]
+        directionTable = {'0':'right', '1':'below', '2':'left', '3':'above'}
+        if opts.direction in str4:
+            opts.direction = directionTable[opts.direction]
+        else:
+            print 'invalid direction for layout, 0,1,2,3 are valid value'
+            sys.exit(-1)
+
         cmd = ''
         if opts.layout in ('landscape', '0') and opts.direction not in ('right', 'left'):
             msg = '%s direction not supported in Landscape mode' % opts.direction
@@ -171,18 +225,24 @@ class DisplayTools():
             e = Exception(msg)
             raise e
 
-        if opts.number in (3, 4):   # only rectangle supported
+        number = len(self.online)
+        if opts.number:
+            number = opts.number
+        if number in xrange(3, 36):   # only rectangle supported
             pre = ''
             direction = self.dirTable[opts.direction]
+            lrotation = opts.lrotation
+            if not len(lrotation):
+                lrotation = [x.rotation for x in self.online]
             for i, monitor in enumerate(self.online):
                 if i > 0:
                     cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
-                            (monitor.name, opts.size, opts.lrotation[i], direction, pre.name)
+                            (monitor.name, opts.size, lrotation[i], direction, pre.name)
                 else:
                     cmd = 'xrandr --noprimary --output %s --pos 0x0 --mode %s --rotate %s' % \
-                            ( monitor.name, opts.size, opts.lrotation[i])
+                            ( monitor.name, opts.size, lrotation[i])
                 pre = monitor
-        elif opts.number == 2:      # can have different resolution and rotation
+        elif number == 2:      # can have different resolution and rotation
             if len(self.online) != 2:
                 msg = 'fatal error in this script'
                 e = Exception(msg)
@@ -204,6 +264,13 @@ class DisplayTools():
                     ( m0.name, s0, r0)
                 cmd += ' --output %s --primary --mode %s --rotate %s %s %s ' % \
                     ( m1.name, s1, r1, direction, m0.name)
+        elif number == 1:      # can have different resolution and rotation
+                m = self.online[0]
+                size = m.cresolution
+                if opts.size != 'best':
+                    size = opts.size
+                cmd = 'xrandr --output %s --mode %s --rotate %s ' % \
+                    ( m.name, size, opts.rotation)
         return cmd
 
 
@@ -256,12 +323,11 @@ def getOptions():
                       default='best',
                       action='store')
     parser.add_option('-d', '--direction',
-                      dest='direction',
                       help='0 : right , next monitor connected to the right of the previous one ,\
                             1 : below , next monitor connect below of the previous one,\
                             2 : left , next monitor connect to the left of the previous one,\
                             3 : top , next monitor connect on top of the previous one',
-                      default='0')
+                      dest='direction')
     parser.add_option('--layout',
                       dest='layout',
                       type='choice',
@@ -288,50 +354,41 @@ def main():
         dm.listOfflineMonitors()
         return
     if opts.activeall:
-        dm.toggleMonitor(off=False)
+        dm.setNumOnline(len(dm.connected))
         return
     if len(opts.offlist):
         dm.toggleMonitor(opts.listoffline, off=True)
         return
 
     # make sure we have the right number of active monitor
-    ntotal = len(dm.connected)
-    nonline = len(dm.online)
-    if opts.number and opts.number != nonline:  # from command line
-        if opts.number > ntotal:
-            msg = 'you have connected %s monitors totally, but ask for %s ' \
-                    % (ntotal, opts.number)
-            e = Exception(msg)
-            raise e
-        diff = []
-        if nonline < opts.number:
-            diff = dm.offline[:opts.number - nonline]
-            map((lambda t: dm.toggleMonitor(t.name, off=False)), diff)
-        elif nonline > opts.number:
-            diff = dm.online[opts.number - nonline :]
-            map((lambda t: dm.toggleMonitor(t.name, off=True)), diff)
+    number = 1
+    if opts.number:
+        dm.setNumOnline(opts.number)
+        number = opts.number
+    elif not opts.number and opts.layout in ('cube', '2'):
+        cubeNum = dm.getCubeNum()
+        if cubeNum:
+            dm.setNumOnline(cubeNum)
         else:
-            pass
-        # refresh all informations after change
-        dm.refresh()
+            print "please specify the number of monitor for cube layout"
+            sys.exit(-1)
+        number = cubeNum
     else:
-        opts.number = nonline
-
+        number = len(dm.online)
 
     # same resolutions and rotations for 3 or 4 monitors
     # can have different resolutions and rotations for 2 monitors
     if opts.size == 'best':
-        if opts.number in (3, 4):
+        if number in (3, 4):
             opts.size = min([x.presolution for x in dm.online])
-        elif opts.number == 2:
+        elif number == 2:
             opts.lsize = [x.presolution for x in dm.online]
     else:
         opts.lsize = re.split(',', opts.size)
         opts.size = opts.lsize[0]
-        if opts.number == 2 and len(opts.lsize) == 1:
+        if number == 2 and len(opts.lsize) == 1:
             opts.lsize.append(dm.online[1].presolution)
 
-    str4 = [str(i) for i in xrange(4)]
     rotateTable = {'0':'normal', '1':'right', '2':'inverted', '3':'left'}
     if ',' in opts.rotation :
         opts.lrotation = re.split(',', opts.rotation)
@@ -339,19 +396,13 @@ def main():
         opts.lrotation = [opts.rotation]
     opts.lrotation = [rotateTable[x] for x in opts.lrotation]
     # use default rotation if not specified
-    if len(opts.lrotation) < opts.number:
-        diff = dm.online[len(opts.lrotation) - opts.number:]
+    if len(opts.lrotation) < number:
+        diff = dm.online[len(opts.lrotation) - number:]
         for m in diff:
             opts.lrotation.append(m.rotation)
 
     opts.rotation = opts.lrotation[0]
 
-    directionTable = {'0':'right', '1':'below', '2':'left', '3':'above'}
-    if opts.direction in str4:
-        opts.direction = directionTable[opts.direction]
-    else:
-        print 'invalid direction for layout, 0,1,2,3 are valid value'
-        sys.exit(-1)
 
     dm.setlayout(opts)
 
