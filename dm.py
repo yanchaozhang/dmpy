@@ -188,7 +188,7 @@ class DisplayTools():
                 cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
                         (monitor.name, opts.size, opts.rotation, '--below', pre.name)
             else:
-                cmd = 'xrandr --noprimary --output %s --pos 0x0 --mode %s --rotate %s' % \
+                cmd = 'xrandr --output %s --pos 0x0 --primary --mode %s --rotate %s' % \
                         ( monitor.name, opts.size, opts.rotation)
             prev = monitor
             for j, m in enumerate(d2[i][1:]):
@@ -239,7 +239,7 @@ class DisplayTools():
                     cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
                             (monitor.name, opts.size, lrotation[i], direction, pre.name)
                 else:
-                    cmd = 'xrandr --noprimary --output %s --pos 0x0 --mode %s --rotate %s' % \
+                    cmd = 'xrandr --output %s --pos 0x0 --primary --mode %s --rotate %s' % \
                             ( monitor.name, opts.size, lrotation[i])
                 pre = monitor
         elif number == 2:      # can have different resolution and rotation
@@ -254,16 +254,11 @@ class DisplayTools():
             r1 = opts.lrotation[1]
 
             direction = self.dirTable[opts.direction]
-            if opts.primary == 0:
-                cmd = 'xrandr --output %s --primary --mode %s --rotate %s ' % \
-                    ( m0.name, s0, r0)
-                cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
-                    ( m1.name, s1, r1, direction, m0.name)
-            else:
-                cmd = 'xrandr --output %s --mode %s --rotate %s ' % \
-                    ( m0.name, s0, r0)
-                cmd += ' --output %s --primary --mode %s --rotate %s %s %s ' % \
-                    ( m1.name, s1, r1, direction, m0.name)
+            cmd = 'xrandr --output %s --primary --mode %s --rotate %s ' % \
+                ( m0.name, s0, r0)
+            cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
+                ( m1.name, s1, r1, direction, m0.name)
+
         elif number == 1:      # can have different resolution and rotation
                 m = self.online[0]
                 size = m.cresolution
@@ -295,11 +290,9 @@ def getOptions():
                       dest='activeall',
                       action='store_true',
                       default=False)
-    parser.add_option('-p', '--primary',
-                      dest='primary',
-                      type=int,
-                      help='primary monitor index, default is the first',
-                      default=0)
+    parser.add_option('-r', '--reorder',
+                      dest='reorder',
+                      help='reorder monitor sequence')
     parser.add_option('--off',
                       action='append',
                       help='de-active online monitor',
@@ -403,6 +396,13 @@ def main():
 
     opts.rotation = opts.lrotation[0]
 
+    # lets do some reorder based on --reorder options
+    if opts.reorder:
+        lorder = opts.reorder.split(',')
+        if len(lorder) != len(dm.online):
+            print "please specify the exact order"
+            sys.exit(-1)
+        dm.online = [dm.online[int(x)] for x in lorder]
 
     dm.setlayout(opts)
 
