@@ -5,41 +5,46 @@ import subprocess
 import optparse
 import math
 
+
 class ConnectedMonitor():
     def __init__(self, display):
-        self.name        = display[0]
+        self.name = display[0]
         self.presolution = display[1]
-        self.online      = display[2]
+        self.online = display[2]
         if self.online:
             self.cresolution = display[3]
-            self.rotation   = display[4]
-            self.position   = display[5]
+            self.rotation = display[4]
+            self.position = display[5]
+            self.other = display[6]
+
 
 class DisplayTools():
 
-    #class XRandrException(Exception):
-        #pass
-
     def __init__(self):
         self.refresh()
-        self.dirTable = {'right':'--right-of', 'left':'--left-of', 'below':'--below', 'above':'--above'}
+        self.dirTable = {'right': '--right-of', 'left': '--left-of',
+                         'below': '--below', 'above': '--above'}
 
     def refresh(self):
         ret = self.__getInfo()
-        self.connected = [ ConnectedMonitor(x) for x in ret ]
-        self.online = [ x for x in self.connected if x.online ]
-        self.offline = [ x for x in self.connected if not x.online ]
+        self.connected = [ConnectedMonitor(x) for x in ret]
+        self.online = [x for x in self.connected if x.online]
+        self.offline = [x for x in self.connected if not x.online]
 
     def __getInfo(self):
-        # must support xrandr command
-        cmd = "xrandr -q"
-        outs, err = subprocess.Popen(cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        shell=True).communicate()
-        if err:
-            #raise self.XRandrException('Test Environment Error: we must support xrandr command!')
-            raise 'Test Environment Error: we must support xrandr command!'
+        outs = ""
+        if sys.platform == "darwin":
+            with open("output.txt", 'r') as f:
+                outs = f.read()
+        else:
+            # must support xrandr command
+            cmd = "xrandr -q"
+            outs, err = subprocess.Popen(cmd,
+                                         stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE,
+                                         shell=True).communicate()
+            if err:
+                raise 'Test Environment Error: we must support xrandr command!'
 
         ret = []
         mp = re.compile('''
@@ -47,6 +52,7 @@ class DisplayTools():
                     \s
                     connected
                     \s
+                    (primary )?
                     ((?P<cresolution>\d+x\d+)   # current resolution
                     \+
                     (?P<pos>\d+\+\d+))?         # position
@@ -57,37 +63,39 @@ class DisplayTools():
                     \s+?
                     (?P<presolution>\d+x\d+)    # preferred resolution
                     \s+?
-                    \S+?
-                    (?:\s|\*?)
-                    \+$
-                    ''',
-                    re.S | re.M | re.X)
+                    (?:[^*+]+\*?\+?.*?)
+                    (?P<other>^\s{2,}.+?)       # remaining resolutions
+                    (?:\n^\S)                   # another beginning
+                    ''', re.S | re.M | re.X)
+
         for m in mp.finditer(outs):
-            if m.group('cresolution') == None:
+            if not m.group('cresolution'):
                 ret.append([m.group('name'), m.group('presolution'), False])
                 continue
             position = m.group('pos').replace('+', ',')
-            if m.group('rotate') != None:
+            other = m.group('other')
+            if m.group('rotate'):
                 rotate = m.group('rotate')
-                ret.append([m.group('name'), m.group('presolution'), True, m.group('cresolution'), rotate, position])
+                ret.append([m.group('name'), m.group('presolution'), True,
+                            m.group('cresolution'), rotate, position, other])
             else:
-                ret.append([m.group('name'), m.group('presolution'), True, m.group('cresolution'), 'normal', position])
+                ret.append([m.group('name'), m.group('presolution'), True,
+                            m.group('cresolution'), 'normal', position, other])
+
         return ret
 
-
     def listMonitorInfo(self):
-        #
-        namelen =  max([len(x.name) for x in self.online])
+        namelen = max([len(x.name) for x in self.online])
         fstr = '%-*s%-12s%-8s%-12s%-10s%-12s'
-        print fstr % (namelen+2,  'Name', 'preferred', 'online?', \
+        print fstr % (namelen+2, 'Name', 'preferred', 'online?',
                       'position', 'rotation', 'current')
         for x in self.connected:
             if x.online:
-                info = fstr % \
-                        (namelen+2, x.name, x.presolution, 'YES', x.position, \
-                         x.rotation, x.cresolution)
+                info = fstr % (namelen+2, x.name, x.presolution, 'YES',
+                               x.position, x.rotation, x.cresolution)
             else:
-                info = '%-*s%-12s%-8s' % (namelen+2, x.name, x.presolution, 'NO')
+                info = '%-*s%-12s%-8s' % (namelen+2, x.name,
+                                          x.presolution, 'NO')
             print info
 
     def listOnlineMonitors(self):
@@ -109,11 +117,10 @@ class DisplayTools():
         subprocess.call(cmd, shell=True)
         time.sleep(5)
 
-
     def getCubeNum(self):
-        cubeRange = [x*x for x in xrange(2, 7)] # 4 ~ 36 monitors total,
+        cubeRange = [x*x for x in xrange(2, 7)]  # 4 ~ 36 monitors total,
         nconnected = len(self.connected)
-        nonline = len(self.online)              # 2 ~ 6 per row and column
+        nonline = len(self.online)               # 2 ~ 6 per row and column
         onlineRange = [x for x in xrange(4, nonline + 1)]
         connectedRange = [x for x in xrange(4, nconnected + 1)]
         possibleOnlineRange = set(onlineRange) & set(cubeRange)
@@ -124,7 +131,7 @@ class DisplayTools():
             raise e
         elif len(possibleConnectedRange) == 1:
             return list(possibleConnectedRange)[0]
-        elif len(possibleConnectedRange) > 1 and len(possibleOnlineRange) == 1 :
+        elif len(possibleConnectedRange) > 1 and len(possibleOnlineRange) == 1:
             return list(possibleOnlineRange)[0]
         elif len(possibleConnectedRange) > 1 and len(possibleOnlineRange) == 0:
             return list(possibleConnectedRange)[0]
@@ -137,8 +144,8 @@ class DisplayTools():
         nonline = len(self.online)
         if number != nonline:  # from command line
             if number > ntotal:
-                msg = 'you have connected %s monitors totally, but ask for %s ' \
-                        % (ntotal, number)
+                msg = 'you have connected %s monitors totally, but ask for %s'\
+                    % (ntotal, number)
                 e = Exception(msg)
                 raise e
             diff = []
@@ -146,13 +153,12 @@ class DisplayTools():
                 diff = self.offline[:number - nonline]
                 map((lambda t: self.toggleMonitor(t.name, off=False)), diff)
             elif nonline > number:
-                diff = self.online[number - nonline :]
+                diff = self.online[number - nonline:]
                 map((lambda t: self.toggleMonitor(t.name, off=True)), diff)
             else:
                 pass
             # refresh all informations after change
             self.refresh()
-
 
     def setlayout(self, opts):
         cmd = ''
@@ -163,13 +169,12 @@ class DisplayTools():
         print '*************'
         print 'cmd : --> \n%s' % cmd
         print '*************'
-        err = subprocess.call(cmd, shell=True)
-        time.sleep(10)
-        if err:
-            print 'error in execute cmd : %s' % cmd
-            return False
+        #err = subprocess.call(cmd, shell=True)
+        #time.sleep(10)
+        #if err:
+        #    print 'error in execute cmd : %s' % cmd
+        #    return False
         return True
-
 
     def __chunks(self, l, n):
         return [l[i:i+n] for i in xrange(0, len(l), n)]
@@ -189,7 +194,7 @@ class DisplayTools():
                         (monitor.name, opts.size, opts.rotation, '--below', pre.name)
             else:
                 cmd = 'xrandr --output %s --pos 0x0 --primary --mode %s --rotate %s' % \
-                        ( monitor.name, opts.size, opts.rotation)
+                        (monitor.name, opts.size, opts.rotation)
             prev = monitor
             for j, m in enumerate(d2[i][1:]):
                 cmd += ' --output %s --mode %s --rotate %s %s %s' % \
@@ -198,9 +203,7 @@ class DisplayTools():
             pre = monitor
         return cmd
 
-
     def getCmd(self, opts):
-
         if not opts.direction:
             if opts.layout in ('landscape', '0'):
                 opts.direction = '0'
@@ -208,7 +211,7 @@ class DisplayTools():
                 opts.direction = '1'
 
         str4 = [str(i) for i in xrange(4)]
-        directionTable = {'0':'right', '1':'below', '2':'left', '3':'above'}
+        directionTable = {'0': 'right', '1': 'below', '2': 'left', '3': 'above'}
         if opts.direction in str4:
             opts.direction = directionTable[opts.direction]
         else:
@@ -220,7 +223,7 @@ class DisplayTools():
             msg = '%s direction not supported in Landscape mode' % opts.direction
             e = Exception(msg)
             raise e
-        elif opts.layout in ('Portrait', '1') and opts.direction not in ('below', 'above'):
+        elif opts.layout in ('portrait', '1') and opts.direction not in ('below', 'above'):
             msg = '%s direction not supported in Portrait mode' % opts.direction
             e = Exception(msg)
             raise e
@@ -240,7 +243,7 @@ class DisplayTools():
                             (monitor.name, opts.size, lrotation[i], direction, pre.name)
                 else:
                     cmd = 'xrandr --output %s --pos 0x0 --primary --mode %s --rotate %s' % \
-                            ( monitor.name, opts.size, lrotation[i])
+                            (monitor.name, opts.size, lrotation[i])
                 pre = monitor
         elif number == 2:      # can have different resolution and rotation
             if len(self.online) != 2:
@@ -254,10 +257,66 @@ class DisplayTools():
             r1 = opts.lrotation[1]
 
             direction = self.dirTable[opts.direction]
-            cmd = 'xrandr --output %s --primary --mode %s --rotate %s ' % \
-                ( m0.name, s0, r0)
-            cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
-                ( m1.name, s1, r1, direction, m0.name)
+            if not opts.align:
+                # relative position
+                cmd = 'xrandr --output %s --primary --mode %s --rotate %s ' % \
+                    (m0.name, s0, r0)
+                cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
+                    (m1.name, s1, r1, direction, m0.name)
+            else:
+                # absolute position
+                if opts.align not in ('0t', '0m', '0b', '1l', '1m', '1r'):
+                    print "%s is not a valid value" % opts.align
+                    sys.exit(-1)
+                if False:'''
+                    1, select monitor with smaller resolution first
+                    2, re-position according to requirement:
+                        0t : Landscape, top aligned
+                        0m : Landscape, middle aligned
+                        0b : Landscape, bottom aligned
+                        1l : Portrait, left aligned
+                        1m : Portrait, middle aligned
+                        1r : Portrait, right aligned
+                '''
+                sml = m0
+                big = m1
+                # select a monitor with smaller resolution
+                if int(m0.presolution.split('x')[0]) > int(m1.presolution.split('x')[0]):
+                    sml = m1
+                    big = m0
+
+                # will use 1024x768 at worst
+                smlw, smlh = 1024, 768
+                for x in ('1680x1050', '1600x1200', '1440x900', '1600x900'):
+                    if x in sml.other:
+                        smlw, smlh = map(int, x.split('x'))
+                        break
+                bigw, bigh = map(int, m1.presolution.split('x'))
+                smlp, bigp = '0x0', '0x0'
+                if opts.align == '0t':
+                    bigp = 'x'.join(smlw, '0')
+                elif opts.align == '0m':
+                    smlp = "%dx%d" % (0,  (bigh - smlh) / 2)
+                    bigp = "%dx%d" % (smlw, 0)
+                elif opts.align == '0b':
+                    smlp = "%dx%d" % (0,  smlh)
+                    bigp = "%dx%d" % (smlw, 0)
+                elif opts.align == '1l':
+                    bigp = "%dx%d" % (0, smlh)
+                elif opts.align == '1m':
+                    smlp = "%dx%d" % ((bigw - smlw) / 2, 0)
+                    bigp = "%dx%d" % (0, smlh)
+                elif opts.align == '1r':
+                    smlp = "%dx%d" % (bigw - smlw, 0)
+                    bigp = "%dx%d" % (0, smlh)
+                else:
+                    print 'un-supported layout'
+                    sys.exit(-1)
+
+                cmd = 'xrandr --output %s --primary --mode %s --rotate %s --pos %s ' % \
+                    (sml.name, "%sx%s" % (smlw, smlh), r0, smlp)
+                cmd += ' --output %s --mode %s --rotate %s %s ' % \
+                    (big.name, "%sx%s" % (bigw, bigh), r1, bigp)
 
         elif number == 1:      # can have different resolution and rotation
                 m = self.online[0]
@@ -265,7 +324,7 @@ class DisplayTools():
                 if opts.size != 'best':
                     size = opts.size
                 cmd = 'xrandr --output %s --mode %s --rotate %s ' % \
-                    ( m.name, size, opts.rotation)
+                    (m.name, size, opts.rotation)
         return cmd
 
 
@@ -329,6 +388,15 @@ def getOptions():
                             1 or portrait : 1x2, 1x3, 1x4 ...\
                             2 or cube : 2x2, 3x3 ...',
                       default='landscape'),
+    parser.add_option('--align',
+                      help='0t : Landscape, top aligned, \
+                            0m : Landscape, middle aligned, \
+                            0b : Landscape, bottom aligned, \
+                            1l : Portrait, left aligned, \
+                            1m : Portrait, middle aligned, \
+                            1r : Portrait, right aligned',
+                      default=None,
+                      dest='align')
     opts, args = parser.parse_args()
     return (opts, args)
 
@@ -382,8 +450,8 @@ def main():
         if number == 2 and len(opts.lsize) == 1:
             opts.lsize.append(dm.online[1].presolution)
 
-    rotateTable = {'0':'normal', '1':'right', '2':'inverted', '3':'left'}
-    if ',' in opts.rotation :
+    rotateTable = {'0': 'normal', '1': 'right', '2': 'inverted', '3': 'left'}
+    if ',' in opts.rotation:
         opts.lrotation = re.split(',', opts.rotation)
     else:
         opts.lrotation = [opts.rotation]
@@ -408,4 +476,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
