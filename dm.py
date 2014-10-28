@@ -15,7 +15,9 @@ class ConnectedMonitor():
             self.cresolution = display[3]
             self.rotation = display[4]
             self.position = display[5]
-            self.other = display[6]
+            # only interest in resolutions
+            p = re.compile(r'\d{3,5}x\d{3,5}')
+            self.other = p.findall(display[6])
 
 
 class DisplayTools():
@@ -63,9 +65,9 @@ class DisplayTools():
                     \s+?
                     (?P<presolution>\d+x\d+)    # preferred resolution
                     \s+?
-                    (?:[^*+]+\*?\+?.*?)
+                    (?:[^*+]+\*?\+?.*?\s*)      # optional */+
                     (?P<other>^\s{2,}.+?)       # remaining resolutions
-                    (?:\n^\S)                   # another beginning
+                    (?=^\w+|\Z)                 # another beginning or EOF
                     ''', re.S | re.M | re.X)
 
         for m in mp.finditer(outs):
@@ -265,18 +267,24 @@ class DisplayTools():
                     (m1.name, s1, r1, direction, m0.name)
             else:
                 # absolute position
-                if opts.align not in ('0t', '0m', '0b', '1l', '1m', '1r'):
+                if opts.align not in ('0t', '0m', '0b', '1l', '1m', '1r', '0tb', '0mb', '0bb', '1lb', '1mb', '1rb'):
                     print "%s is not a valid value" % opts.align
                     sys.exit(-1)
                 if False:'''
                     1, select monitor with smaller resolution first
                     2, re-position according to requirement:
-                        0t : Landscape, top aligned
-                        0m : Landscape, middle aligned
-                        0b : Landscape, bottom aligned
-                        1l : Portrait, left aligned
-                        1m : Portrait, middle aligned
-                        1r : Portrait, right aligned
+                        0t : smaller one top-left most, Landscape, top aligned
+                        0m : smaller one top-left most, Landscape, middle aligned
+                        0b : smaller one top-left most, Landscape, bottom aligned
+                        1l : smaller one top-left most, Portrait, left aligned
+                        1m : smaller one top-left most, Portrait, middle aligned
+                        1r : smaller one top-left most, Portrait, right aligned
+                        0tb : bigger one top-left most, Landscape, top aligned
+                        0mb : bigger one top-left most, Landscape, middle aligned
+                        0bb : bigger one top-left most, Landscape, bottom aligned
+                        1lb : bigger one top-left most, Portrait, left aligned
+                        1mb : bigger one top-left most, Portrait, middle aligned
+                        1rb : bigger one top-left most, Portrait, right aligned
                 '''
                 sml = m0
                 big = m1
@@ -285,21 +293,22 @@ class DisplayTools():
                     sml = m1
                     big = m0
 
-                # will use 1024x768 at worst
-                smlw, smlh = 1024, 768
+                # will use 1280x1024 at worst
+                smlw, smlh = 1280, 1024
                 for x in ('1680x1050', '1600x1200', '1440x900', '1600x900'):
                     if x in sml.other:
                         smlw, smlh = map(int, x.split('x'))
                         break
                 bigw, bigh = map(int, m1.presolution.split('x'))
                 smlp, bigp = '0x0', '0x0'
+                # default the smaller on top-left most
                 if opts.align == '0t':
-                    bigp = 'x'.join(smlw, '0')
+                    bigp = "%dx%d" % (smlw, 0)
                 elif opts.align == '0m':
                     smlp = "%dx%d" % (0,  (bigh - smlh) / 2)
                     bigp = "%dx%d" % (smlw, 0)
                 elif opts.align == '0b':
-                    smlp = "%dx%d" % (0,  smlh)
+                    smlp = "%dx%d" % (0, bigh - smlh)
                     bigp = "%dx%d" % (smlw, 0)
                 elif opts.align == '1l':
                     bigp = "%dx%d" % (0, smlh)
@@ -309,13 +318,26 @@ class DisplayTools():
                 elif opts.align == '1r':
                     smlp = "%dx%d" % (bigw - smlw, 0)
                     bigp = "%dx%d" % (0, smlh)
+                # the bigger one on top-left most
+                elif opts.align == '0tb':
+                    smlp = "%dx%d" % (bigw, 0)
+                elif opts.align == '0mb':
+                    smlp = "%dx%d" % (bigw, (bigh - smlh) / 2)
+                elif opts.align == '0bb':
+                    smlp = "%dx%d" % (bigw, bigh - smlh)
+                elif opts.align == '1lb':
+                    smlp = "%dx%d" % (0, bigh)
+                elif opts.align == '1mb':
+                    smlp = "%dx%d" % ((bigw - smlw) / 2, bigh)
+                elif opts.align == '1rb':
+                    smlp = "%dx%d" % (bigw - smlw, bigh)
                 else:
                     print 'un-supported layout'
                     sys.exit(-1)
 
-                cmd = 'xrandr --output %s --primary --mode %s --rotate %s --pos %s ' % \
+                cmd = 'xrandr --output %s --mode %s --rotate %s --pos %s ' % \
                     (sml.name, "%sx%s" % (smlw, smlh), r0, smlp)
-                cmd += ' --output %s --mode %s --rotate %s %s ' % \
+                cmd += ' --output %s --mode %s --rotate %s --pos %s ' % \
                     (big.name, "%sx%s" % (bigw, bigh), r1, bigp)
 
         elif number == 1:      # can have different resolution and rotation
@@ -389,12 +411,18 @@ def getOptions():
                             2 or cube : 2x2, 3x3 ...',
                       default='landscape'),
     parser.add_option('--align',
-                      help='0t : Landscape, top aligned, \
-                            0m : Landscape, middle aligned, \
-                            0b : Landscape, bottom aligned, \
-                            1l : Portrait, left aligned, \
-                            1m : Portrait, middle aligned, \
-                            1r : Portrait, right aligned',
+                      help='0t : Landscape, with smaller one top-left most, top aligned, \
+                            0m : Landscape, with smaller one top-left most, middle aligned, \
+                            0b : Landscape, with smaller one top-left most, bottom aligned, \
+                            1l : Portrai, with smaller one top-left most,, left aligned, \
+                            1m : Portrai, with smaller one top-left most,, middle aligned, \
+                            1r : Portrai, with smaller one top-left most,, right aligned, \
+                            0tb : Landscape, with bigger one top-left most, top aligned, \
+                            0mb : Landscape, with bigger one top-left most, middle aligned, \
+                            0bb : Landscape, with bigger one top-left most, bottom aligned, \
+                            1lb : Portrait, with bigger one top-left most, left aligned, \
+                            1mb : Portrait, with bigger one top-left most, middle aligned, \
+                            1rb : Portrait, with bigger one top-left most, right aligned',
                       default=None,
                       dest='align')
     opts, args = parser.parse_args()
