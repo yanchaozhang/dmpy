@@ -54,7 +54,8 @@ class DisplayTools():
                     \s
                     connected
                     \s
-                    (primary )?
+                    (primary)?
+                    \s?
                     ((?P<cresolution>\d+x\d+)   # current resolution
                     \+
                     (?P<pos>\d+\+\d+))?         # position
@@ -171,12 +172,13 @@ class DisplayTools():
         print '*************'
         print 'cmd : --> \n%s' % cmd
         print '*************'
-        #err = subprocess.call(cmd, shell=True)
-        #time.sleep(10)
-        #if err:
-        #    print 'error in execute cmd : %s' % cmd
-        #    return False
-        return True
+        if sys.platform == "linux2":
+            err = subprocess.call(cmd, shell=True)
+            time.sleep(10)
+            if err:
+                print 'error in execute cmd : %s' % cmd
+                return False
+            return True
 
     def __chunks(self, l, n):
         return [l[i:i+n] for i in xrange(0, len(l), n)]
@@ -252,90 +254,170 @@ class DisplayTools():
                 msg = 'fatal error in this script'
                 e = Exception(msg)
                 raise e
+
             m0, m1 = self.online
-            s0 = opts.lsize[0]
-            s1 = opts.lsize[1]
             r0 = opts.lrotation[0]
             r1 = opts.lrotation[1]
-
-            direction = self.dirTable[opts.direction]
             if not opts.align:
                 # relative position
+                direction = self.dirTable[opts.direction]
+                s0 = opts.lsize[0]
+                s1 = opts.lsize[1]
                 cmd = 'xrandr --output %s --primary --mode %s --rotate %s ' % \
                     (m0.name, s0, r0)
                 cmd += ' --output %s --mode %s --rotate %s %s %s ' % \
                     (m1.name, s1, r1, direction, m0.name)
+
             else:
                 # absolute position
-                if opts.align not in ('0t', '0m', '0b', '1l', '1m', '1r', '0tb', '0mb', '0bb', '1lb', '1mb', '1rb'):
+                if opts.align not in ('lts', 'lms', 'lbs', 'pls', 'pms', 'prs', 'ltb', 'lmb', 'lbb', 'plb', 'pmb', 'prb'):
                     print "%s is not a valid value" % opts.align
                     sys.exit(-1)
                 if False:'''
                     1, select monitor with smaller resolution first
                     2, re-position according to requirement:
-                        0t : smaller one top-left most, Landscape, top aligned
-                        0m : smaller one top-left most, Landscape, middle aligned
-                        0b : smaller one top-left most, Landscape, bottom aligned
-                        1l : smaller one top-left most, Portrait, left aligned
-                        1m : smaller one top-left most, Portrait, middle aligned
-                        1r : smaller one top-left most, Portrait, right aligned
-                        0tb : bigger one top-left most, Landscape, top aligned
-                        0mb : bigger one top-left most, Landscape, middle aligned
-                        0bb : bigger one top-left most, Landscape, bottom aligned
-                        1lb : bigger one top-left most, Portrait, left aligned
-                        1mb : bigger one top-left most, Portrait, middle aligned
-                        1rb : bigger one top-left most, Portrait, right aligned
+                        lts : smaller one top-left most, Landscape, top aligned
+                        lms : smaller one top-left most, Landscape, middle aligned
+                        lbs : smaller one top-left most, Landscape, bottom aligned
+                        pls : smaller one top-left most, Portrait, left aligned
+                        pms : smaller one top-left most, Portrait, middle aligned
+                        prs : smaller one top-left most, Portrait, right aligned
+                        ltb : bigger one top-left most, Landscape, top aligned
+                        lmb : bigger one top-left most, Landscape, middle aligned
+                        lbb : bigger one top-left most, Landscape, bottom aligned
+                        plb : bigger one top-left most, Portrait, left aligned
+                        pmb : bigger one top-left most, Portrait, middle aligned
+                        prb : bigger one top-left most, Portrait, right aligned
                 '''
                 sml = m0
                 big = m1
                 # select a monitor with smaller resolution
                 if int(m0.presolution.split('x')[0]) > int(m1.presolution.split('x')[0]):
-                    sml = m1
-                    big = m0
+                    sml, big = big, sml
 
                 # will use 1280x1024 at worst
                 smlw, smlh = 1280, 1024
-                for x in ('1680x1050', '1600x1200', '1440x900', '1600x900'):
-                    if x in sml.other:
-                        smlw, smlh = map(int, x.split('x'))
-                        break
+                smlResolutionTestingList = ('1680x1050', '1600x1200', '1440x900', '1600x900')
+                if sml.presolution in smlResolutionTestingList:
+                    smlw, smlh = map(int, sml.presolution.split('x'))
+                else:
+                    for x in smlResolutionTestingList:
+                        if x in sml.other:
+                            smlw, smlh = map(int, x.split('x'))
+                            break
                 bigw, bigh = map(int, m1.presolution.split('x'))
                 smlp, bigp = '0x0', '0x0'
                 # default the smaller on top-left most
-                if opts.align == '0t':
-                    bigp = "%dx%d" % (smlw, 0)
-                elif opts.align == '0m':
-                    smlp = "%dx%d" % (0,  (bigh - smlh) / 2)
-                    bigp = "%dx%d" % (smlw, 0)
-                elif opts.align == '0b':
-                    smlp = "%dx%d" % (0, bigh - smlh)
-                    bigp = "%dx%d" % (smlw, 0)
-                elif opts.align == '1l':
-                    bigp = "%dx%d" % (0, smlh)
-                elif opts.align == '1m':
-                    smlp = "%dx%d" % ((bigw - smlw) / 2, 0)
-                    bigp = "%dx%d" % (0, smlh)
-                elif opts.align == '1r':
-                    smlp = "%dx%d" % (bigw - smlw, 0)
-                    bigp = "%dx%d" % (0, smlh)
+                if opts.align == 'lts':
+                    if r0 in ('left', 'right'):
+                        bigp = "%dx%d" % (smlh, 0)
+                    else:
+                        bigp = "%dx%d" % (smlw, 0)
+                elif opts.align == 'lms':
+                    if r0 in ('left', 'right'):
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % (0, (bigw - smlw) / 2)
+                        else:
+                            smlp = "%dx%d" % (0, (bigh - smlw) / 2 if bigh > smlw else 0)
+                        bigp = "%dx%d" % (smlh, 0)
+                    else:
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % (0, (bigw - smlh) / 2)
+                        else:
+                            smlp = "%dx%d" % (0, (bigh - smlw) / 2)
+                        bigp = "%dx%d" % (smlw, 0)
+                elif opts.align == 'lbs':
+                    if r0 in ('left', 'right'):
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % (0, bigw - smlw)
+                        else:
+                            smlp = "%dx%d" % (0, bigh - smlw if bigh > smlw else 0)
+                        bigp = "%dx%d" % (smlh, 0)
+                    else:
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % (0, bigh - smlw if bigh > smlw else 0)
+                        else:
+                            smlp = "%dx%d" % (0, bigh - smlh)
+                        bigp = "%dx%d" % (smlw, 0)
+                elif opts.align == 'pls':
+                    if r0 in ('left', 'right'):
+                        bigp = "%dx%d" % (0, smlw)
+                    else:
+                        bigp = "%dx%d" % (0, smlh)
+                elif opts.align == 'pms':
+                    if r0 in ('left', 'right'):
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % ((bigh - smlh) / 2, 0)
+                        else:
+                            smlp = "%dx%d" % ((bigw - smlh) / 2, 0)
+                        bigp = "%dx%d" % (0, smlw)
+                    else:
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % ((bigh - smlw) / 2 if bigh > smlw else 0, 0)
+                        else:
+                            smlp = "%dx%d" % ((bigw - smlw) / 2, 0)
+                        bigp = "%dx%d" % (0, smlh)
+                elif opts.align == 'prs':
+                    if r0 in ('left', 'right'):
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % (bigh - smlh, 0)
+                        else:
+                            smlp = "%dx%d" % (bigw - smlh, 0)
+                        bigp = "%dx%d" % (0, smlw)
+                    else:
+                        if r1 in ('left', 'right'):
+                            smlp = "%dx%d" % (bigh - smlw if bigh > smlw else 0, 0)
+                        else:
+                            smlp = "%dx%d" % (bigw - smlw, 0)
+                        bigp = "%dx%d" % (0, smlh)
                 # the bigger one on top-left most
-                elif opts.align == '0tb':
-                    smlp = "%dx%d" % (bigw, 0)
-                elif opts.align == '0mb':
-                    smlp = "%dx%d" % (bigw, (bigh - smlh) / 2)
-                elif opts.align == '0bb':
-                    smlp = "%dx%d" % (bigw, bigh - smlh)
-                elif opts.align == '1lb':
-                    smlp = "%dx%d" % (0, bigh)
-                elif opts.align == '1mb':
-                    smlp = "%dx%d" % ((bigw - smlw) / 2, bigh)
-                elif opts.align == '1rb':
-                    smlp = "%dx%d" % (bigw - smlw, bigh)
+                elif opts.align == 'ltb':
+                    if r1 in ('left', 'right'):
+                        smlp = "%dx%d" % (bigh, 0)
+                    else:
+                        smlp = "%dx%d" % (bigw, 0)
+                elif opts.align == 'lmb':
+                    if r1 in ('left', 'right'):
+                        smlp = "%dx%d" % (bigh, (bigw - smlw) / 2 if r0 in ('left', 'right') else (bigw - smlh) / 2)
+                    else:
+                        if r0 in ('left', 'right'):
+                            smlp = "%dx%d" % (bigw, (bigh - smlw) / 2 if bigh > smlw else 0)
+                        else:
+                            smlp = "%dx%d" % (bigw, (bigh - smlh) / 2)
+                elif opts.align == 'lbb':
+                    if r1 in ('left', 'right'):
+                        smlp = "%dx%d" % (bigh, bigw - smlw if r0 in ('left', 'right') else bigw - smlh)
+                    else:
+                        if r0 in ('left', 'right'):
+                            smlp = "%dx%d" % (bigw, bigh - smlw if bigh > smlw else 0)
+                        else:
+                            smlp = "%dx%d" % (bigw, bigh - smlh)
+                elif opts.align == 'plb':
+                    if r1 in ('left', 'right'):
+                        smlp = "%dx%d" % (0, bigw)
+                    else:
+                        smlp = "%dx%d" % (0, bigh)
+                elif opts.align == 'pmb':
+                    if r1 in ('left', 'right'):
+                        if r0 in ('left', 'right'):
+                            smlp = "%dx%d" % ((bigh - smlh) / 2, bigw)
+                        else:
+                            smlp = "%dx%d" % ((bigh - smlw) / 2 if bigh > smlw else 0, bigw)
+                    else:
+                        smlp = "%dx%d" % ((bigw - smlh if r0 in ('left', 'right') else bigw - smlw) / 2, bigh)
+                elif opts.align == 'prb':
+                    if r1 in ('left', 'right'):
+                        if r0 in ('left','right'):
+                            smlp = "%dx%d" % (bigh - smlh, bigw)
+                        else:
+                            smlp = "%dx%d" % (bigh - smlw if bigh > smlw else 0, bigw)
+                    else:
+                        smlp = "%dx%d" % (bigw - smlh if r0 in ('left','right') else bigw - smlw, bigh)
                 else:
                     print 'un-supported layout'
                     sys.exit(-1)
 
-                cmd = 'xrandr --output %s --mode %s --rotate %s --pos %s ' % \
+                cmd = 'xrandr --output %s --primary --mode %s --rotate %s --pos %s ' % \
                     (sml.name, "%sx%s" % (smlw, smlh), r0, smlp)
                 cmd += ' --output %s --mode %s --rotate %s --pos %s ' % \
                     (big.name, "%sx%s" % (bigw, bigh), r1, bigp)
@@ -411,18 +493,18 @@ def getOptions():
                             2 or cube : 2x2, 3x3 ...',
                       default='landscape'),
     parser.add_option('--align',
-                      help='0t : Landscape, with smaller one top-left most, top aligned, \
-                            0m : Landscape, with smaller one top-left most, middle aligned, \
-                            0b : Landscape, with smaller one top-left most, bottom aligned, \
-                            1l : Portrai, with smaller one top-left most,, left aligned, \
-                            1m : Portrai, with smaller one top-left most,, middle aligned, \
-                            1r : Portrai, with smaller one top-left most,, right aligned, \
-                            0tb : Landscape, with bigger one top-left most, top aligned, \
-                            0mb : Landscape, with bigger one top-left most, middle aligned, \
-                            0bb : Landscape, with bigger one top-left most, bottom aligned, \
-                            1lb : Portrait, with bigger one top-left most, left aligned, \
-                            1mb : Portrait, with bigger one top-left most, middle aligned, \
-                            1rb : Portrait, with bigger one top-left most, right aligned',
+                      help='lts : Landscape, with smaller one top-left most, top aligned, \
+                            lms : Landscape, with smaller one top-left most, middle aligned, \
+                            lbs : Landscape, with smaller one top-left most, bottom aligned, \
+                            pls : Portrai, with smaller one top-left most,, left aligned, \
+                            pms : Portrai, with smaller one top-left most,, middle aligned, \
+                            prs : Portrai, with smaller one top-left most,, right aligned, \
+                            ltb : Landscape, with bigger one top-left most, top aligned, \
+                            lmb : Landscape, with bigger one top-left most, middle aligned, \
+                            lbb : Landscape, with bigger one top-left most, bottom aligned, \
+                            plb : Portrait, with bigger one top-left most, left aligned, \
+                            pmb : Portrait, with bigger one top-left most, middle aligned, \
+                            prb : Portrait, with bigger one top-left most, right aligned',
                       default=None,
                       dest='align')
     opts, args = parser.parse_args()
